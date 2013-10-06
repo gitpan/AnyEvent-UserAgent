@@ -10,3 +10,4 @@ t/00-use.t
 t/01-pod.t
 t/02-pod-coverage.t
 t/03-manifest.t
+t/04-changes.t

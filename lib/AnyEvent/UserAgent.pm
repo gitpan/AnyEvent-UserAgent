@@ -12,21 +12,29 @@ use HTTP::Request::Common ();
 use HTTP::Response ();
 
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
-has timeout => (is => 'rw', default => sub { 30 });
-has agent => (is => 'rw', default => sub { $AnyEvent::HTTP::USERAGENT . ' AnyEvent-UserAgent/' . $VERSION });
-has cookie_jar => (is => 'rw', default => sub { HTTP::Cookies->new(hide_cookie2 => 1) });
+has agent         => (is => 'rw', default => sub { $AnyEvent::HTTP::USERAGENT . ' AnyEvent-UserAgent/' . $VERSION });
+has cookie_jar    => (is => 'rw', default => sub { HTTP::Cookies->new });
+has max_redirects => (is => 'rw', default => sub { 5 });
+has timeout       => (is => 'rw', default => sub { 30 });
 
+sub request {
+	my ($self, $req, $cb) = @_;
 
-sub get    { _request(GET    => @_) }
-sub head   { _request(HEAD   => @_) }
-sub put    { _request(PUT    => @_) }
-sub delete { _request(DELETE => @_) }
-sub post   { _request(POST   => @_) }
+	$self->_request($req, sub {
+		$self->_response($req, @_, $cb);
+	});
+}
 
-sub _request {
+sub get    { _make_request(GET    => @_) }
+sub head   { _make_request(HEAD   => @_) }
+sub put    { _make_request(PUT    => @_) }
+sub delete { _make_request(DELETE => @_) }
+sub post   { _make_request(POST   => @_) }
+
+sub _make_request {
 	my $cb   = pop();
 	my $meth = shift();
 	my $self = shift();
@@ -35,10 +43,18 @@ sub _request {
 	$self->request(&{'HTTP::Request::Common::' . $meth}(@_), $cb);
 }
 
-sub request {
+sub _request {
 	my ($self, $req, $cb) = @_;
 
-	$req->headers->user_agent($self->agent);
+	my $url  = $req->url;
+	my $hdrs = $req->headers;
+
+	unless ($hdrs->user_agent) {
+		$hdrs->user_agent($self->agent);
+	}
+	if ($url->userinfo && !$hdrs->authorization) {
+		$hdrs->authorization_basic(split(':', $url->userinfo, 2));
+	}
 	$self->cookie_jar->add_cookie_header($req);
 
 	my $headers = $req->headers;
@@ -47,6 +63,7 @@ sub request {
 
 	my %opts = (
 		timeout => $self->timeout,
+		recurse => 0,
 		headers => $headers,
 		body    => $req->content,
 	);
@@ -56,35 +73,21 @@ sub request {
 		$req->uri,
 		%opts,
 		sub {
-			$cb->(_response($req, $self->cookie_jar, @_));
+			$cb->(@_);
 		}
 	);
 }
 
 sub _response {
-	my ($req, $jar, $body, $hdrs) = @_;
+	my $cb = pop();
+	my ($self, $req, $body, $hdrs, $prev, $count) = @_;
 
 	my $res = HTTP::Response->new(delete($hdrs->{Status}), delete($hdrs->{Reason}));
-	my $prev;
 
-	if (exists($hdrs->{Redirect})) {
-		$prev = _response($req, $jar, @{delete($hdrs->{Redirect})});
-	}
+	$res->request($req);
+	$res->previous($prev) if $prev;
 
-	if ($prev) {
-		my $meth = $prev->request->method;
-		my $code = $prev->code;
-		if ($meth ne 'HEAD' && ($code == 301 || $code == 302 || $code == 303)) {
-			$meth = 'GET';
-		}
-		$res->previous($prev);
-		no strict 'refs';
-		$res->request(&{'HTTP::Request::Common::' . $meth}(delete($hdrs->{URL})));
-	}
-	else {
-		delete($hdrs->{URL});
-		$res->request($req);
-	}
+	delete($hdrs->{URL});
 	if (defined($hdrs->{HTTPVersion})) {
 		$res->protocol('HTTP/' . delete($hdrs->{HTTPVersion}));
 	}
@@ -101,10 +104,55 @@ sub _response {
 	if (defined($body)) {
 		$res->content_ref(\$body);
 	}
+	$self->cookie_jar->extract_cookies($res);
 
-	$jar->extract_cookies($res);
+	my $code = $res->code;
 
-	return $res;
+	if ($code == 301 || $code == 302 || $code == 303 || $code == 307 || $code == 308) {
+		$self->_redirect($req, $code, $res, $count, $cb);
+	}
+	else {
+		$cb->($res);
+	}
+}
+
+sub _redirect {
+	my ($self, $req, $code, $prev, $count, $cb) = @_;
+
+	unless (defined($count) ? $count : ($count = $self->max_redirects)) {
+		$prev->header('client-warning' => 'Redirect loop detected (max_redirects = ' . $self->max_redirects . ')');
+		$cb->($prev);
+		return;
+	}
+
+	my $meth  = $req->method;
+	my $proto = $req->uri->scheme;
+	my $uri   = $prev->header('location');
+
+	$req = $req->clone();
+	$req->remove_header('cookie');
+	if (($code == 302 || $code == 303) && !($meth eq 'GET' || $meth eq 'HEAD')) {
+		$req->method('GET');
+		$req->content('');
+		$req->remove_content_headers();
+	}
+	{
+		# Support for relative URL for redirect.
+		# Not correspond to RFC.
+		local $URI::ABS_ALLOW_RELATIVE_SCHEME = 1;
+		my $base = $prev->base;
+		$uri = $HTTP::URI_CLASS->new(defined($uri) ? $uri : '', $base)->abs($base);
+	}
+	$req->uri($uri);
+	if ($proto eq 'https' && $uri->scheme eq 'http') {
+		# Suppress 'Referer' header for HTTPS to HTTP redirect.
+		# RFC 2616, section 15.1.3.
+		$req->remove_header('referer');
+	}
+
+	$self->_request($req, sub {
+		$self->_response($req, @_, $prev, $count - 1, sub { return $cb->(@_); });
+	});
 }
 
 
@@ -153,6 +201,11 @@ methods. These methods will then be invoked by the user agent as requests are
 sent and responses are received. Normally this will be a L<HTTP::Cookies> object
 or some subclass. Default cookie jar is the L<HTTP::Cookies> object.
 
+=head2 max_redirects
+
+Maximum number of redirects the user agent will follow before it gives up. By
+default, the value is 5.
+
 =head2 timeout
 
 The request timeout. See L<C<timeout>|AnyEvent::HTTP/timeout-seconds> in
@@ -168,38 +221,54 @@ L<AnyEvent::HTTP>. Default timeout is 30 seconds.
 Constructor for the user agent. You can pass it either a hash or a hash
 reference with attribute values.
 
+=head2 request
+
+    $ua->request(GET 'http://example.com/', sub { print($_[0]->code) });
+
+This method will dispatch the given request object. Normally this will be an
+instance of the L<HTTP::Request> class, but any object with a similar interface
+will do. The last argument must be a callback that will be called with a
+response object as first argument. Response will be an instance of the
+L<HTTP::Response> class.
+
 =head2 get
 
     $ua->get('http://example.com/', sub { print($_[0]->code) });
 
-This method is a wrapper for the L<C<HTTP::Request::Common::GET()>|HTTP::Request::Common/GET $url>.
+This method is a wrapper for the L<C<request()>|/request> method and the
+L<C<HTTP::Request::Common::GET()>|HTTP::Request::Common/GET $url> function.
 The last argument must be a callback.
 
 =head2 head
 
-This method is a wrapper for the L<C<HTTP::Request::Common::HEAD()>|HTTP::Request::Common/HEAD $url>.
+This method is a wrapper for the L<C<request()>|/request> method and the
+L<C<HTTP::Request::Common::HEAD()>|HTTP::Request::Common/HEAD $url> function.
 See L<C<get()>|/get>.
 
 =head2 put
 
-This method is a wrapper for the L<C<HTTP::Request::Common::PUT()>|HTTP::Request::Common/PUT $url>.
+This method is a wrapper for the L<C<request()>|/request> method and the
+L<C<HTTP::Request::Common::PUT()>|HTTP::Request::Common/PUT $url> function.
 See L<C<get()>|/get>.
 
 =head2 delete
 
-This method is a wrapper for the L<C<HTTP::Request::Common::DELETE()>|HTTP::Request::Common/DELETE $url>.
-See L<C<get()>|/get>.
+This method is a wrapper for the L<C<request()>|/request> method and the
+L<C<HTTP::Request::Common::DELETE()>|HTTP::Request::Common/DELETE $url>
+function. See L<C<get()>|/get>.
 
 =head2 post
 
     $ua->post('http://example.com/', [key => 'value'], sub { print($_[0]->code) });
 
-This method is a wrapper for the L<C<HTTP::Request::Common::POST()>|HTTP::Request::Common/POST $url>.
+This method is a wrapper for the L<C<request()>|/request> method and the
+L<C<HTTP::Request::Common::POST()>|HTTP::Request::Common/POST $url> function.
 The last argument must be a callback.
 
 =head1 SEE ALSO
 
-L<AnyEvent::HTTP>, L<HTTP::Cookies>, L<HTTP::Request::Common>, L<HTTP::Response>.
+L<AnyEvent::HTTP>, L<HTTP::Cookies>, L<HTTP::Request::Common>, L<HTTP::Request>,
+L<HTTP::Response>.
 
 =head1 SUPPORT
 
