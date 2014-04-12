@@ -12,14 +12,6 @@ WriteMakefile(
 	VERSION_FROM   => 'lib/AnyEvent/UserAgent.pm',
 	ABSTRACT_FROM  => 'lib/AnyEvent/UserAgent.pm',
 	LICENSE        => 'perl',
-	META_MERGE     => {
-		resources => {
-			license     => 'http://dev.perl.org/licenses/',
-			repository  => 'http://github.com/AdCampRu/anyevent-useragent',
-			bugtracker  => 'http://github.com/AdCampRu/anyevent-useragent/issues',
-		},
-		no_index  => {directory => ['t']},
-	},
 	BUILD_REQUIRES => {
 		'Test::More'    => 0,
 	},
@@ -28,6 +20,14 @@ WriteMakefile(
 		'HTTP::Cookies'  => 0,
 		'HTTP::Message'  => 0,
 		'Moo'            => 0,
+	},
+	META_MERGE     => {
+		resources => {
+			license     => 'http://dev.perl.org/licenses/',
+			repository  => 'http://github.com/AdCampRu/anyevent-useragent',
+			bugtracker  => 'http://github.com/AdCampRu/anyevent-useragent/issues',
+		},
+		no_index  => {directory => ['t']},
 	},
 	dist           => {COMPRESS => 'gzip -9f', SUFFIX => 'gz'},
 	clean          => {FILES => 'AnyEvent-UserAgent-*'},

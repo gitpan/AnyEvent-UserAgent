@@ -12,7 +12,7 @@ use HTTP::Request::Common ();
 use HTTP::Response ();
 
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 
 has agent         => (is => 'rw', default => sub { $AnyEvent::HTTP::USERAGENT . ' AnyEvent-UserAgent/' . $VERSION });
@@ -46,16 +46,18 @@ sub _make_request {
 sub _request {
 	my ($self, $req, $cb) = @_;
 
-	my $url  = $req->url;
+	my $uri  = $req->uri;
 	my $hdrs = $req->headers;
 
 	unless ($hdrs->user_agent) {
 		$hdrs->user_agent($self->agent);
 	}
-	if ($url->userinfo && !$hdrs->authorization) {
-		$hdrs->authorization_basic(split(':', $url->userinfo, 2));
+	if ($uri->can('userinfo') && $uri->userinfo && !$hdrs->authorization) {
+		$hdrs->authorization_basic(split(':', $uri->userinfo, 2));
 	}
-	$self->cookie_jar->add_cookie_header($req);
+	if ($uri->scheme) {
+		$self->cookie_jar->add_cookie_header($req);
+	}
 
 	my $headers = $req->headers;
 
@@ -274,11 +276,11 @@ L<HTTP::Response>.
 
 =over 4
 
-=item Repository
+=item * Repository
 
 L<http://github.com/AdCampRu/anyevent-useragent>
 
-=item Bug tracker
+=item * Bug tracker
 
 L<http://github.com/AdCampRu/anyevent-useragent/issues>
 

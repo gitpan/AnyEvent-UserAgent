@@ -1,6 +1,9 @@
 Revision history for perl module AnyEvent::UserAgent
 
-0.02
+0.03    2014-04-12
+        - Fixed processing of invalid URLs (reported by Andrey Khozov).
+
+0.02    2013-10-06
         - Implemented Basic authorization support.
         - Implemented redirects support.
         - Fixed cookie processing in redirects.
