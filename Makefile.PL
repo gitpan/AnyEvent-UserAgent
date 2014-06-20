@@ -13,13 +13,16 @@ WriteMakefile(
 	ABSTRACT_FROM  => 'lib/AnyEvent/UserAgent.pm',
 	LICENSE        => 'perl',
 	BUILD_REQUIRES => {
-		'Test::More'    => 0,
+		'AnyEvent'              => 0,
+		'HTTP::Request::Common' => 0,
+		'Test::More'            => 0,
 	},
 	PREREQ_PM      => {
-		'AnyEvent::HTTP' => 0,
-		'HTTP::Cookies'  => 0,
-		'HTTP::Message'  => 0,
-		'Moo'            => 0,
+		'namespace::clean'      => 0,
+		'AnyEvent::HTTP'        => 0,
+		'HTTP::Cookies'         => 0,
+		'HTTP::Message'         => 0,
+		'Moo'                   => 0,
 	},
 	META_MERGE     => {
 		resources => {

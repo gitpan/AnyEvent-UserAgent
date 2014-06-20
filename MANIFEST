@@ -2,10 +2,12 @@ Changes
 lib/AnyEvent/UserAgent.pm
 Makefile.PL
 MANIFEST
-MANIFEST.SKIP
 README
 t/00-use.t
-t/01-invalid-url.t
+t/01-headers.t
+t/02-options-1.t
+t/03-options-2.t
+t/04-url.t
 t/90-pod.t
 t/91-pod-coverage.t
 t/92-manifest.t
