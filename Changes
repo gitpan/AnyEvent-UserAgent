@@ -1,6 +1,9 @@
 Revision history for perl module AnyEvent::UserAgent
 
-0.04    2014-06-19
+0.05    2014-06-21
+        - Fixed test failed for perl <= 5.12.
+
+0.04    2014-06-20
         - Added support for redefine some options of the user agent for one
           request only.
         - Added support for arguments of AnyEvent::HTTP::http_request method.

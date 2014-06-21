@@ -19,7 +19,7 @@ use AnyEvent::UserAgent ();
 
 		ok exists($opts{headers});
 		is ref($opts{headers}), 'HASH';
-		ok keys($opts{headers}) == 2;
+		ok keys(%{$opts{headers}}) == 2;
 
 		ok exists($opts{headers}{'X-Foo'});
 		is $opts{headers}{'X-Foo'}, 'bar';
