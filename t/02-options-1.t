@@ -38,8 +38,8 @@ my $cnt = 0;
 }
 
 my $ua = AnyEvent::UserAgent->new(
-	timeout       => $TIMEOUT,
-	max_redirects => $MAX_REDIRECTS,
+	inactivity_timeout => $TIMEOUT,
+	max_redirects      => $MAX_REDIRECTS,
 );
 my $cv = AE::cv;
 
@@ -51,7 +51,7 @@ $ua->get('http://example.com/', sub {
 	$cv->send();
 });
 
-$ua->timeout($TIMEOUT + 1);
+$ua->inactivity_timeout($TIMEOUT + 1);
 $ua->max_redirects($MAX_REDIRECTS + 1);
 
 $cv->recv();

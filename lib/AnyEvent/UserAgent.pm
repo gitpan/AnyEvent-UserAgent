@@ -13,13 +13,18 @@ use HTTP::Response ();
 
 use namespace::clean;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 
-has agent         => (is => 'rw', default => sub { $AnyEvent::HTTP::USERAGENT . ' AnyEvent-UserAgent/' . $VERSION });
-has cookie_jar    => (is => 'rw', default => sub { HTTP::Cookies->new });
-has max_redirects => (is => 'rw', default => sub { 5 });
-has timeout       => (is => 'rw', default => sub { 30 });
+has agent              => (is => 'rw', default => sub { $AnyEvent::HTTP::USERAGENT . ' AnyEvent-UserAgent/' . $VERSION });
+
+has cookie_jar         => (is => 'rw', default => sub { HTTP::Cookies->new });
+
+has max_redirects      => (is => 'rw', default => sub { 5 });
+
+has inactivity_timeout => (is => 'rw', default => sub { 20 });
+
+has request_timeout    => (is => 'rw', default => sub { 0 });
 
 sub request {
 	my $cb = pop();
@@ -62,21 +67,31 @@ sub _request {
 		$self->cookie_jar->add_cookie_header($req);
 	}
 
-	for (qw(max_redirects timeout)) {
+	for (qw(max_redirects inactivity_timeout request_timeout)) {
 		$opts->{$_} = $self->$_() unless exists($opts->{$_});
 	}
 
-	AnyEvent::HTTP::http_request(
+	my ($grd, $tmr);
+
+	if ($opts->{request_timeout}) {
+		$tmr = AE::timer $opts->{request_timeout}, 0, sub {
+			undef($grd);
+			$cb->($opts, undef, {Status => 597, Reason => 'Request timeout'});
+		};
+	}
+	$grd = AnyEvent::HTTP::http_request(
 		$req->method,
 		$req->uri,
 		headers => {map { $_ => $hdrs->header($_) } $hdrs->header_field_names},
 		body    => $req->content,
 		recurse => 0,
-		timeout => $opts->{timeout},
+		timeout => $opts->{inactivity_timeout},
 		(map { $_ => $opts->{$_} } grep { exists($opts->{$_}) }
-			qw(proxy tls_ctx session on_prepare tcp_connect on_header
+			qw(proxy tls_ctx session timeout on_prepare tcp_connect on_header
 			   on_body want_body_handle persistent keepalive handle_params)),
 		sub {
+			undef($grd);
+			undef($tmr);
 			$cb->($opts, @_);
 		}
 	);
@@ -104,6 +119,14 @@ sub _response {
 	}
 	if (keys(%$hdrs)) {
 		$res->header(%$hdrs);
+	}
+	if ($res->code >= 590 && $res->code <= 599 && $res->message) {
+		if ($res->message eq 'Connection timed out') {
+			$res->message('Inactivity timeout');
+		}
+		unless ($res->header('client-warning')) {
+			$res->header('client-warning' => $res->message);
+		}
 	}
 	if (defined($body)) {
 		$res->content_ref(\$body);
@@ -205,22 +228,30 @@ methods. These methods will then be invoked by the user agent as requests are
 sent and responses are received. Normally this will be a L<HTTP::Cookies> object
 or some subclass. Default cookie jar is the L<HTTP::Cookies> object.
 
+=head2 inactivity_timeout
+
+Maximum time in seconds in which connection can be inactive before getting
+closed. Default timeout value is C<20>. Setting the value to C<0> will allow
+connections to be inactive indefinitely.
+
 =head2 max_redirects
 
-Maximum number of redirects the user agent will follow before it gives up. By
-default, the value is 5.
+Maximum number of redirects the user agent will follow before it gives up.
+The default value is C<5>.
 
-=head2 timeout
+=head2 request_timeout
 
-The request timeout. See L<C<timeout>|AnyEvent::HTTP/timeout-seconds> in
-L<AnyEvent::HTTP>. Default timeout is 30 seconds.
+Maximum time in seconds to establish a connection, send the request and receive
+a response. The request will be canceled when that time expires. Default timeout
+value is C<0>. Setting the value to C<0> will allow the user agent to wait
+indefinitely. The timeout will reset for every followed redirect.
 
 =head1 METHODS
 
 =head2 new
 
     my $ua = AnyEvent::UserAgent->new;
-    my $ua = AnyEvent::UserAgent->new(timeout => 60);
+    my $ua = AnyEvent::UserAgent->new(request_timeout => 60);
 
 Constructor for the user agent. You can pass it either a hash or a hash
 reference with attribute values.
