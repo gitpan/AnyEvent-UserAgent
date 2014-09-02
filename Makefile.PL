@@ -15,6 +15,7 @@ WriteMakefile(
 	BUILD_REQUIRES => {
 		'AnyEvent'              => 0,
 		'HTTP::Request::Common' => 0,
+		'Test::Deep'            => 0,
 		'Test::More'            => 0,
 	},
 	PREREQ_PM      => {

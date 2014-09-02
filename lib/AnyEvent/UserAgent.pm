@@ -13,7 +13,7 @@ use HTTP::Response ();
 
 use namespace::clean;
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 
 has agent              => (is => 'rw', default => sub { $AnyEvent::HTTP::USERAGENT . ' AnyEvent-UserAgent/' . $VERSION });
@@ -110,8 +110,10 @@ sub _response {
 	if (defined($hdrs->{HTTPVersion})) {
 		$res->protocol('HTTP/' . delete($hdrs->{HTTPVersion}));
 	}
-	if (my $cookies = $hdrs->{'set-cookie'}) {
-		local @_ = split(/,(\w+=)/, ',' . $cookies);
+	if (my $hdr = $hdrs->{'set-cookie'}) {
+		# Split comma-concatenated "Set-Cookie" values.
+		# Based on RFC 6265, section 4.1.1.
+		local @_ = split(/,([\w.!"'%\$&*+-^`]+=)/, ',' . $hdr);
 		shift();
 		my @val;
 		push(@val, join('', shift(), shift())) while @_;

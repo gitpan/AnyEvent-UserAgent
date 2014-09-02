@@ -25,6 +25,7 @@
          "requires" : {
             "AnyEvent" : "0",
             "HTTP::Request::Common" : "0",
+            "Test::Deep" : "0",
             "Test::More" : "0"
          }
       },
@@ -55,5 +56,5 @@
          "url" : "http://github.com/AdCampRu/anyevent-useragent"
       }
    },
-   "version" : "0.06"
+   "version" : "0.07"
 }

@@ -1,5 +1,8 @@
 Revision history for perl module AnyEvent::UserAgent
 
+0.07    2014-09-02
+        - Fixed cookie handling (thanks to Eric Johnson).
+
 0.06    2014-07-31
         - Renamed timeout attribute to inactivity_timeout.
         - Added request_timeout attribute (thanks to Alexander Onokhov).

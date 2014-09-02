@@ -9,7 +9,8 @@ t/02-options-1.t
 t/03-options-2.t
 t/04-url.t
 t/05-timeout.t
-t/06-warning.t
+t/06-cookies.t
+t/07-warning.t
 t/90-pod.t
 t/91-pod-coverage.t
 t/92-manifest.t
